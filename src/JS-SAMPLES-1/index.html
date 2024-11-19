@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Safe Route Planner</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+        #sidebar {
+            width: 300px;
+            padding: 20px;
+            background: #f5f5f5;
+            overflow-y: auto;
+        }
+        #map {
+            flex-grow: 1;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .legend {
+            margin-top: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        .safety-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+        .time-warning {
+            color: #d32f2f;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .route-segment {
+            margin-top: 10px;
+            padding: 8px;
+            background: #f8f8f8;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .route-segment.safe {
+            border-left-color: #4CAF50;
+        }
+        .route-segment.medium {
+            border-left-color: #FFA500;
+        }
+        .route-segment.high {
+            border-left-color: #FF0000;
+        }
+        /* Previous styles remain the same */
+        .highlighted-route {
+            animation: routeGlow 2s infinite;
+            z-index: 1000;
+        }
+
+        @keyframes routeGlow {
+            0% { strokeOpacity: 0.8; }
+            50% { strokeOpacity: 1; }
+            100% { strokeOpacity: 0.8; }
+        }
+
+        .route-shadow {
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+        }
+        /* Previous styles remain the same */
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .toggle-button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .toggle-button.active {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .toggle-button.avoid-high {
+            border: 2px solid #FF0000;
+        }
+        
+        .toggle-button.avoid-medium {
+            border: 2px solid #FFA500;
+        }
+        
+        .toggle-button.avoid-high.active {
+            background: #FF0000;
+        }
+        
+        .toggle-button.avoid-medium.active {
+            background: #FFA500;
+        }
+
+        .route-alternative {
+            margin-top: 10px;
+            padding: 8px;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .route-alternative:hover {
+            background: #f5f5f5;
+        }
+
+        .route-alternative.selected {
+            border-left: 4px solid #4CAF50;
+            background: #e8f5e9;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="sidebar">
+            <h2>Safe Route Planner</h2>
+            <div class="input-group">
+                <label for="start">Start Location:</label>
+                <input type="text" id="start" placeholder="Enter location or business name">
+            </div>
+            <div class="input-group">
+                <label for="end">Destination:</label>
+                <input type="text" id="end" placeholder="Enter location or business name">
+            </div>
+            <div class="input-group">
+                <label for="time">Time of Travel:</label>
+                <input type="time" id="time" value="14:00">
+            </div>
+            <div class="input-group">
+                <label for="mode">Travel Mode:</label>
+                <select id="mode">
+                    <option value="WALKING">Walking</option>
+                    <option value="TRANSIT">Public Transit</option>
+                </select>
+            </div>
+            <!-- Previous input groups remain the same -->
+            
+            <div class="button-group">
+              <button id="avoidHigh" class="toggle-button avoid-high" onclick="toggleAvoidance('high')">
+                  Avoid High Risk
+              </button>
+              <button id="avoidMedium" class="toggle-button avoid-medium" onclick="toggleAvoidance('medium')">
+                  Avoid All Risks
+              </button>
+          </div>
+
+          <button onclick="calculateSafeRoute()">Find Safe Route</button>
+
+          <div id="alternatives-container" style="margin-top: 15px; display: none;">
+              <h3>Alternative Routes</h3>
+              <div id="route-alternatives"></div>
+          </div>
+
+          <!-- Previous legend and safety info divs remain the same -->
+            <div class="legend">
+                <h3>Safety Levels</h3>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4CAF50"></div>
+                    <span>Safe Route Segment</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FFA500"></div>
+                    <span>Medium Risk Segment</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FF0000"></div>
+                    <span>High Risk Segment</span>
+                </div>
+            </div>
+
+            <div class="safety-info">
+                <h3>Route Information</h3>
+                <div id="safety-score">Safety Score: N/A</div>
+                <div id="route-info">Distance: N/A</div>
+                <div id="time-estimate">Estimated Time: N/A</div>
+                <div id="route-segments"></div>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script>
+        let map, directionsService, directionsRenderer;
+        const dangerZones = [];
+        let startAutocomplete, endAutocomplete;
+        let avoidanceSettings = {
+            high: false,
+            medium: false
+        };
+        let currentRoutes = [];
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 37.7749, lng: -122.4194 },
+                zoom: 13,
+                styles: [
+                    {
+                        featureType: 'all',
+                        elementType: 'geometry',
+                        stylers: [{ visibility: 'on' }]
+                    }
+                ]
+            });
+
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                suppressMarkers: false,
+                polylineOptions: {
+                    strokeWeight: 6,
+                    strokeOpacity: 0.8
+                }
+            });
+
+            // Enhanced autocomplete initialization
+            const startInput = document.getElementById('start');
+            const endInput = document.getElementById('end');
+            
+            startAutocomplete = new google.maps.places.Autocomplete(startInput, {
+                types: ['establishment', 'geocode'],
+                fields: ['place_id', 'geometry', 'name', 'formatted_address']
+            });
+
+            endAutocomplete = new google.maps.places.Autocomplete(endInput, {
+                types: ['establishment', 'geocode'],
+                fields: ['place_id', 'geometry', 'name', 'formatted_address']
+            });
+
+            startAutocomplete.addListener('place_changed', () => {
+                const place = startAutocomplete.getPlace();
+                if (!place.geometry) {
+                    window.alert("No details available for: '" + place.name + "'");
+                    return;
+                }
+            });
+
+            endAutocomplete.addListener('place_changed', () => {
+                const place = endAutocomplete.getPlace();
+                if (!place.geometry) {
+                    window.alert("No details available for: '" + place.name + "'");
+                    return;
+                }
+            });
+
+            addMockDangerZones();
+            document.getElementById('time').addEventListener('change', checkTimeWarnings);
+        }
+
+        function addMockDangerZones() {
+            // High risk areas (red)
+            createDangerZone(
+                [
+                    {lat: 37.7749, lng: -122.4194},
+                    {lat: 37.7749, lng: -122.4094},
+                    {lat: 37.7649, lng: -122.4094},
+                    {lat: 37.7649, lng: -122.4194}
+                ],
+                'high'
+            );
+
+            // Medium risk areas (orange)
+            createDangerZone(
+                [
+                    {lat: 37.7849, lng: -122.4294},
+                    {lat: 37.7849, lng: -122.4194},
+                    {lat: 37.7749, lng: -122.4194},
+                    {lat: 37.7749, lng: -122.4294}
+                ],
+                'medium'
+            );
+        }
+
+        function createDangerZone(coords, riskLevel) {
+            const color = riskLevel === 'high' ? '#FF0000' : '#FFA500';
+            const polygon = new google.maps.Polygon({
+                paths: coords,
+                strokeColor: color,
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: color,
+                fillOpacity: 0.2
+            });
+
+            polygon.setMap(map);
+            dangerZones.push({polygon, riskLevel});
+        }
+
+        function getRouteSegmentColor(riskLevel) {
+            switch(riskLevel) {
+                case 'high':
+                    return '#FF0000';
+                case 'medium':
+                    return '#FFA500';
+                default:
+                    return '#4CAF50';
+            }
+        }
+
+        // Previous initialization functions remain the same...
+
+        function toggleAvoidance(level) {
+            const button = document.getElementById(`avoid${level.charAt(0).toUpperCase() + level.slice(1)}`);
+            
+            if (level === 'medium') {
+                // If avoiding medium, must also avoid high
+                avoidanceSettings.medium = !avoidanceSettings.medium;
+                avoidanceSettings.high = avoidanceSettings.medium;
+                
+                button.classList.toggle('active');
+                document.getElementById('avoidHigh').classList.toggle('active', avoidanceSettings.medium);
+            } else {
+                // If turning off high risk avoidance, must also turn off medium
+                avoidanceSettings.high = !avoidanceSettings.high;
+                if (!avoidanceSettings.high) {
+                    avoidanceSettings.medium = false;
+                    document.getElementById('avoidMedium').classList.remove('active');
+                }
+                button.classList.toggle('active');
+            }
+        }
+
+        function calculateSafeRoute() {
+            const startPlace = startAutocomplete.getPlace();
+            const endPlace = endAutocomplete.getPlace();
+
+            if (!startPlace || !startPlace.geometry || !endPlace || !endPlace.geometry) {
+                alert("Please select valid locations from the dropdown.");
+                return;
+            }
+
+            // 1. IMMEDIATELY CLEAR ANY EXISTING ROUTE VISUALIZATION
+            clearExistingRouteSegments();   // Clear segments (polylines)
+            directionsRenderer.setMap(null); // Clear route from DirectionsRenderer
+
+            const mode = document.getElementById('mode').value;
+
+            // Request multiple routes
+            const request = {
+                origin: startPlace.geometry.location,
+                destination: endPlace.geometry.location,
+                travelMode: google.maps.TravelMode[mode],
+                provideRouteAlternatives: true
+            };
+
+            directionsService.route(request, (response, status) => {
+                if (status === 'OK') {
+                    currentRoutes = filterAndScoreRoutes(response.routes);
+                    displayRouteAlternatives(currentRoutes);
+                    
+                    // Display the safest route that meets avoidance criteria
+                    if (currentRoutes.length > 0) {
+                        visualizeRoute(currentRoutes[0]);
+                    } else {
+                        alert("No routes found that meet the safety criteria. Try adjusting the avoidance settings.");
+                    }
+                } else {
+                    alert('Directions request failed due to ' + status);
+                }
+            });
+        }
+
+        function filterAndScoreRoutes(routes) {
+            let validRoutes = routes.map(route => {
+                const segments = analyzeRouteSegments(route);
+                const riskScore = calculateRouteRiskScore(route);
+                
+                return {
+                    route: route,
+                    segments: segments,
+                    riskScore: riskScore,
+                    hasHighRisk: segments.some(s => s.riskLevel === 'high'),
+                    hasMediumRisk: segments.some(s => s.riskLevel === 'medium')
+                };
+            });
+
+            // Filter based on avoidance settings
+            if (avoidanceSettings.high) {
+                validRoutes = validRoutes.filter(r => !r.hasHighRisk);
+            }
+            if (avoidanceSettings.medium) {
+                validRoutes = validRoutes.filter(r => !r.hasMediumRisk && !r.hasHighRisk);
+            }
+
+            // Sort by risk score
+            return validRoutes.sort((a, b) => a.riskScore - b.riskScore);
+        }
+
+        function analyzeRouteSegments(route) {
+            const segments = [];
+            const path = route.overview_path;
+            let currentSegment = {
+                points: [path[0]],
+                riskLevel: 'safe'
+            };
+
+            for (let i = 1; i < path.length; i++) {
+                const point = path[i];
+                let highestRisk = 'safe';
+
+                dangerZones.forEach(zone => {
+                    if (google.maps.geometry.poly.containsLocation(point, zone.polygon)) {
+                        if (zone.riskLevel === 'high') highestRisk = 'high';
+                        else if (zone.riskLevel === 'medium' && highestRisk !== 'high') 
+                            highestRisk = 'medium';
+                    }
+                });
+
+                if (highestRisk !== currentSegment.riskLevel) {
+                    currentSegment.points.push(point);
+                    segments.push(currentSegment);
+                    currentSegment = {
+                        points: [point],
+                        riskLevel: highestRisk
+                    };
+                } else {
+                    currentSegment.points.push(point);
+                }
+            }
+
+            segments.push(currentSegment);
+            return segments;
+        }
+
+        function displayRouteAlternatives(routes) {
+            // Clear existing route
+            directionsRenderer.setMap(null); // Ensures any previous route is removed
+
+            const container = document.getElementById('route-alternatives');
+            container.innerHTML = '';
+            
+            routes.forEach((routeData, index) => {
+                const route = routeData.route;
+                const div = document.createElement('div');
+                div.className = 'route-alternative' + (index === 0 ? ' selected' : '');
+                
+                const distance = route.legs[0].distance.text;
+                const duration = route.legs[0].duration.text;
+                const safetyScore = 100 - (routeData.riskScore * 20);
+                
+                div.innerHTML = `
+                    <strong>Route ${index + 1}</strong><br>
+                    Distance: ${distance}<br>
+                    Duration: ${duration}<br>
+                    Safety Score: ${safetyScore.toFixed(1)}%
+                `;
+                
+                div.onclick = () => {
+                    // Clear existing route AND any rendered segments from previous selections
+                    directionsRenderer.setMap(null); 
+                    clearExistingRouteSegments(); // NEW FUNCTION: Clears any previously drawn segments
+
+                    // Highlight the selected route
+                    document.querySelectorAll('.route-alternative').forEach(el => el.classList.remove('selected'));
+                    div.classList.add('selected');
+                    visualizeRoute(routeData);
+                };
+                
+                container.appendChild(div);
+            });
+            
+            document.getElementById('alternatives-container').style.display = 
+                routes.length > 0 ? 'block' : 'none';
+        }
+
+        function clearExistingRouteSegments() {
+            if (window.routePolylines) { // Check if the array exists
+                window.routePolylines.forEach(polyline => polyline.setMap(null));
+                window.routePolylines = []; // Reset the array
+            }
+
+            if (window.routeShadowPolylines) {
+                window.routeShadowPolylines.forEach(polyline => polyline.setMap(null));
+                window.routeShadowPolylines = []; // Reset the array
+            }
+        }
+
+        function visualizeRoute(routeData) {
+            const segments = routeData.segments;
+            // Initialize arrays to store created polylines
+            window.routePolylines = [];
+            window.routeShadowPolylines = [];
+
+            visualizeRouteSegments(segments);
+            updateSafetyInfo(routeData.route, routeData.riskScore, segments);
+        }
+
+        function createRouteSegments(route) {
+            const segments = [];
+            const path = route.overview_path;
+            let currentSegment = {
+                points: [path[0]],
+                riskLevel: 'safe'
+            };
+
+            for (let i = 1; i < path.length; i++) {
+                const point = path[i];
+                let highestRisk = 'safe';
+
+                // Check risk level for current point
+                dangerZones.forEach(zone => {
+                    if (google.maps.geometry.poly.containsLocation(point, zone.polygon)) {
+                        if (zone.riskLevel === 'high') highestRisk = 'high';
+                        else if (zone.riskLevel === 'medium' && highestRisk !== 'high') 
+                            highestRisk = 'medium';
+                    }
+                });
+
+                if (highestRisk !== currentSegment.riskLevel) {
+                    currentSegment.points.push(point);
+                    segments.push(currentSegment);
+                    currentSegment = {
+                        points: [point],
+                        riskLevel: highestRisk
+                    };
+                } else {
+                    currentSegment.points.push(point);
+                }
+            }
+
+            segments.push(currentSegment);
+            return segments;
+        }
+
+        function visualizeRouteSegments(segments) {
+            clearExistingRouteSegments(); // Clears previous segments before drawing new ones
+            
+            segments.forEach(segment => {
+                // Create shadow effect
+                const shadowPolyline = new google.maps.Polyline({
+                    path: segment.points,
+                    strokeColor: '#FFFFFF',
+                    strokeOpacity: 0.4,
+                    strokeWeight: 10,
+                    map: map,
+                    zIndex: 1
+                });
+                window.routeShadowPolylines.push(shadowPolyline); // Store the shadow polyline
+
+                // Create main route line with glow effect
+                const polyline = new google.maps.Polyline({
+                    path: segment.points,
+                    strokeColor: getRouteSegmentColor(segment.riskLevel),
+                    strokeOpacity: 0.8,
+                    strokeWeight: 6,
+                    map: map,
+                    zIndex: 2
+                });
+                window.routePolylines.push(polyline); // Store the main polyline
+
+                // Add hover effect
+                google.maps.event.addListener(polyline, 'mouseover', function() {
+                    this.setOptions({
+                        strokeWeight: 8,
+                        strokeOpacity: 1
+                    });
+                    shadowPolyline.setOptions({
+                        strokeWeight: 12,
+                        strokeOpacity: 0.6
+                    });
+                });
+
+                google.maps.event.addListener(polyline, 'mouseout', function() {
+                    this.setOptions({
+                        strokeWeight: 6,
+                        strokeOpacity: 0.8
+                    });
+                    shadowPolyline.setOptions({
+                        strokeWeight: 10,
+                        strokeOpacity: 0.4
+                    });
+                });
+
+                // Add animated dash effect
+                let count = 0;
+                window.setInterval(() => {
+                    count = (count + 1) % 200;
+                    const icons = polyline.get('icons');
+                    icons[0].offset = (count / 2) + '%';
+                    polyline.set('icons', icons);
+                }, 20);
+
+                // Set icons for animated line
+                polyline.set('icons', [{
+                    icon: {
+                        path: 'M 0,-1 0,1',
+                        strokeOpacity: 1,
+                        scale: 4
+                    },
+                    offset: '0',
+                    repeat: '20px'
+                }]);
+            });
+
+            // Fit bounds to show the entire route
+            const bounds = new google.maps.LatLngBounds();
+            segments.forEach(segment => {
+                segment.points.forEach(point => bounds.extend(point));
+            });
+            map.fitBounds(bounds);
+        }
+
+        function calculateRouteRiskScore(route) {
+            let riskScore = 0;
+            const path = route.overview_path;
+
+            // Check each point along the route for intersection with danger zones
+            path.forEach(point => {
+                dangerZones.forEach(zone => {
+                    if (google.maps.geometry.poly.containsLocation(point, zone.polygon)) {
+                        riskScore += zone.riskLevel === 'high' ? 2 : 1;
+                    }
+                });
+            });
+
+            return riskScore / path.length; // Normalize by route length
+        }
+
+        function updateSafetyInfo(route, riskScore, segments) {
+            const safetyScore = 100 - (riskScore * 20);
+            const distance = route.legs[0].distance.text;
+            const duration = route.legs[0].duration.text;
+
+            document.getElementById('safety-score').textContent = 
+                `Safety Score: ${safetyScore.toFixed(1)}%`;
+            document.getElementById('route-info').textContent = 
+                `Distance: ${distance}`;
+            document.getElementById('time-estimate').textContent = 
+                `Estimated Time: ${duration}`;
+
+            // Update route segments information
+            const segmentsContainer = document.getElementById('route-segments');
+            segmentsContainer.innerHTML = '<h4>Route Segments:</h4>';
+            
+            segments.forEach((segment, index) => {
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = `route-segment ${segment.riskLevel}`;
+                segmentDiv.textContent = `Segment ${index + 1}: ${segment.riskLevel} risk level`;
+                segmentsContainer.appendChild(segmentDiv);
+                // Add click listener to segmentDiv
+                segmentDiv.addEventListener('click', () => {
+                    // Construct a LatLngBounds object encompassing the segment
+                    const bounds = new google.maps.LatLngBounds();
+                    segment.points.forEach(point => bounds.extend(point));
+
+                    // Fit map to the segment bounds
+                    map.fitBounds(bounds);
+
+                    // Set 3D view if segment length is short enough
+                    const segmentLength = google.maps.geometry.spherical.computeLength(segment.points);
+                    if (segmentLength < 5000) {  // Adjust threshold as needed (5000 meters = 5km)
+                        map.setTilt(45); // Set tilt for 3D view. Play with the value (0-90).
+                        map.setHeading(90); // Experiment for desired orientation
+                    }
+                });
+
+
+        segmentsContainer.appendChild(segmentDiv);
+    });
+        }
+
+        function checkTimeWarnings() {
+            const time = document.getElementById('time').value;
+            const hour = parseInt(time.split(':')[0]);
+            
+            const existingWarning = document.querySelector('.time-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+
+            if (hour < 6 || hour >= 22) {
+                const warning = document.createElement('div');
+                warning.className = 'time-warning';
+                warning.textContent = '!Late night travel detected. Extra caution advised!';
+                document.querySelector('.safety-info').appendChild(warning);
+            }
+        }
+    </script>
+    <script 
+        src="https://maps.googleapis.com/maps/api/js?key=<Your API Key>&libraries=places,geometry&callback=initMap" 
+        async 
+        defer>
+    </script>
+</body>
+</html>
